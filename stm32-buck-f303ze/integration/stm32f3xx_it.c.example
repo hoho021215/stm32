@@ -1,0 +1,59 @@
+/*
+ * [참고용] CubeMX 생성 stm32f3xx_it.c의 수정 위치를 보여 주는 부분 예제입니다.
+ * 전체 파일을 덮어쓰거나 이 .example을 빌드에 추가하지 마세요.
+ * 기존 USER CODE 구역 안에 [직접 추가] 내용만 넣습니다.
+ * 아래 예시 외의 생성된 인터럽트 함수와 extern 선언도 그대로 유지합니다.
+ */
+
+#include "main.h"          /* [CubeMX 자동 생성] 유지 */
+#include "stm32f3xx_it.h"  /* [CubeMX 자동 생성] 유지 */
+
+/* USER CODE BEGIN Includes */
+#include "buck_app.h" /* [직접 추가] 비상 차단 함수 선언 */
+/* USER CODE END Includes */
+
+/* [CubeMX 자동 생성] 실제 생성된 extern 선언을 그대로 유지 */
+extern DMA_HandleTypeDef hdma_adc1;
+extern ADC_HandleTypeDef hadc1;
+
+void HardFault_Handler(void)
+{
+  /* USER CODE BEGIN HardFault_IRQn 0 */
+  /* [직접 추가] 생성된 무한 루프에 들어가기 전에 양쪽 게이트 차단 */
+  Buck_EmergencyOff();
+  /* USER CODE END HardFault_IRQn 0 */
+  while (1)
+  {
+    /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    /* USER CODE END W1_HardFault_IRQn 0 */
+  }
+}
+
+/* [CubeMX 자동 생성] 아래 HAL 호출은 삭제하거나 Buck_Init()로 바꾸지 마세요.
+ * 제어 계산은 DMA HAL 처리에서 buck_app.c의 ADC 콜백으로 연결됩니다. */
+void DMA1_Channel1_IRQHandler(void)
+{
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
+  /* USER CODE END DMA1_Channel1_IRQn 0 */
+  HAL_DMA_IRQHandler(&hdma_adc1);
+  /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
+  /* USER CODE END DMA1_Channel1_IRQn 1 */
+}
+
+void ADC1_2_IRQHandler(void)
+{
+  /* USER CODE BEGIN ADC1_2_IRQn 0 */
+  /* USER CODE END ADC1_2_IRQn 0 */
+  HAL_ADC_IRQHandler(&hadc1);
+  /* USER CODE BEGIN ADC1_2_IRQn 1 */
+  /* USER CODE END ADC1_2_IRQn 1 */
+}
+
+void SysTick_Handler(void)
+{
+  /* USER CODE BEGIN SysTick_IRQn 0 */
+  /* USER CODE END SysTick_IRQn 0 */
+  HAL_IncTick(); /* [CubeMX 자동 생성] HAL 시간 감시에 필요 */
+  /* USER CODE BEGIN SysTick_IRQn 1 */
+  /* USER CODE END SysTick_IRQn 1 */
+}

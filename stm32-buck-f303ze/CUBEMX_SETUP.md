@@ -103,29 +103,24 @@ CH4는 외부 게이트 구동이 아니라 내부 ADC 트리거용입니다. Cu
 - 타깃 Cortex-M4, FPU `fpv4-sp-d16`, 프로젝트의 HAL·라이브러리와 일치하는 hard-float ABI를 사용합니다.
 - 최적화 `-O2`, `-ffast-math` 사용 금지. 콜백 안에 UART 출력·printf·지연·블로킹 함수를 추가하지 않습니다.
 
-## 통합
+## Code Generator와 사용자 코드 통합
 
-1. `buck_app.c`를 `Core/Src/`, `buck_app.h`를 `Core/Inc/`에 복사합니다.
-2. `main.c`의 USER CODE Includes 영역에 `#include "buck_app.h"`를 추가합니다.
-3. CubeMX 초기화 뒤 `Buck_Init()`를 한 번 호출합니다.
+Toolchain/IDE는 **STM32CubeIDE**로 선택하고 Project Manager → Code Generator → **Keep User Code when re-generating**을 켭니다. 주변장치 초기화를 별도 `.c/.h` 파일로 생성하는 옵션은 켜거나 꺼도 되며, 생성된 핸들·초기화 함수와 헤더를 유지합니다. `hadc1`, `htim1`을 사용자 파일에서 다시 정의하지 않습니다.
 
-```c
-MX_GPIO_Init();
-MX_DMA_Init();
-MX_ADC1_Init();
-MX_TIM1_Init();
+실제 삽입 위치는 **[CUBEMX_USER_CODE.md](CUBEMX_USER_CODE.md)**를 따릅니다.
 
-Buck_Init();
+| 생성 파일 | 기존 USER CODE 구역 | 직접 추가할 내용 |
+|---|---|---|
+| `main.c` | `Includes` | `#include "buck_app.h"` |
+| `main.c` | `2` | 모든 생성된 `MX_*_Init()` 뒤 `Buck_Init();` |
+| `main.c` | `3` | 기존 반복문 안 `Buck_Poll();` |
+| `main.c` | `Error_Handler_Debug` | 인터럽트를 끈 뒤, 기존 정지 루프 앞 `Buck_EmergencyOff();` |
+| `stm32f3xx_it.c` | `Includes` | `#include "buck_app.h"` |
+| `stm32f3xx_it.c` | `HardFault_IRQn 0` | 기존 정지 루프 앞 `Buck_EmergencyOff();` |
 
-while (1)
-{
-    Buck_Poll();
-}
-```
+`main.h`에 함수 원형을 직접 적을 필요는 없습니다. `buck_app.h`를 include하면 됩니다. ADC 콜백은 `buck_app.c`가 소유하므로 `main.c`의 `USER CODE 4`에 다시 만들지 않습니다. `HAL_TIM_PWM_Start()`나 `HAL_TIMEx_PWMN_Start()`도 추가 호출하지 않습니다.
 
-`hadc1`, `htim1` 핸들 이름을 유지합니다. `HAL_TIM_PWM_Start()` 또는 `HAL_TIMEx_PWMN_Start()`를 추가로 호출하지 않습니다. 해당 함수는 MOE를 조기에 활성화할 수 있습니다. 모듈이 타이머와 게이트 허용 순서를 관리합니다.
-
-기존 `HAL_ADC_ConvHalfCpltCallback`, `HAL_ADC_ConvCpltCallback`, `HAL_ADC_ErrorCallback`이 있으면 함수 중복을 없애고 로직을 합칩니다. `Error_Handler()`와 `HardFault_Handler()`에서도 정지 루프에 들어가기 전에 `Buck_EmergencyOff()`를 호출합니다. IRQ 파일에서는 헤더를 include해야 합니다. 이 함수는 정상 GPIO·타이머 초기화 이후의 차단 수단이며 하드웨어 독립 보호를 대신하지 않습니다.
+`integration/*.example`은 생성된 원본에 사용자 코드를 넣을 위치를 보여 주는 참고 자료입니다. 전체 파일을 대체하거나 빌드하지 않습니다. 기존 생성된 HAL IRQ 처리와 SysTick 호출은 그대로 둡니다. CubeIDE에서 파일 Refresh, 활성 빌드의 Exclude from Build 해제 및 `Core/Inc` include path를 확인합니다.
 
 ## 최초 확인
 

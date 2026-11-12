@@ -2,13 +2,15 @@
 
 NUCLEO-F303ZE와 UCC27714를 사용하는 **입력 30V → 출력 15V·1A, 스위칭 50kHz** 벅 컨버터용 STM32CubeF3 HAL 모듈입니다. CubeMX가 생성한 프로젝트에 추가해서 사용합니다. 완성된 CubeIDE 프로젝트나 플래시용 바이너리는 포함하지 않습니다.
 
-## 파일과 적용
+## 먼저 적용할 순서
 
-- [`Core/Src/buck_app.c`](Core/Src/buck_app.c): 제어, ADC DMA 콜백, 영점 보정, 기동·정지 및 보호 감시.
-- [`Core/Inc/buck_app.h`](Core/Inc/buck_app.h): 애플리케이션 함수와 디버거 명령 선언.
-- [CUBEMX_SETUP.md](CUBEMX_SETUP.md): 핀·클럭·ADC·PWM 설정과 프로젝트 통합 방법.
+1. [CUBEMX_SETUP.md](CUBEMX_SETUP.md)에 따라 `.ioc`에서 핀·클럭·ADC·PWM을 설정하고 Generate Code를 실행합니다.
+2. [`Core/Src/buck_app.c`](Core/Src/buck_app.c), [`Core/Inc/buck_app.h`](Core/Inc/buck_app.h)를 같은 프로젝트 경로에 직접 추가합니다.
+3. **[CUBEMX_USER_CODE.md](CUBEMX_USER_CODE.md)**를 따라 생성된 `main.c`와 `stm32f3xx_it.c`의 기존 `USER CODE BEGIN/END` 구역 안에 호출만 넣습니다.
 
-`buck_app.c`는 프로젝트의 `Core/Src/`, `buck_app.h`는 `Core/Inc/`로 복사합니다. CubeMX 초기화 뒤 `Buck_Init()`를 한 번 호출하고, 메인 루프에서 `Buck_Poll()`을 계속 호출합니다. 기존 ADC 콜백이 있으면 중복 정의하지 말고 합쳐야 합니다.
+직접 넣을 위치는 `Includes`의 헤더, `2`의 `Buck_Init()`, `3`의 `Buck_Poll()`, 오류·HardFault 구역의 비상 차단입니다. 필요한 사용자 추가 부분은 한글 주석으로 표시했습니다. 생성된 초기화 함수와 HAL IRQ 호출은 유지합니다. ADC 콜백은 `buck_app.c`에 있으므로 `main.c`에 중복 구현하지 않습니다.
+
+전체 배치 참고는 [`integration/main.c.example`](integration/main.c.example), [`integration/stm32f3xx_it.c.example`](integration/stm32f3xx_it.c.example)에 있습니다. 이 파일들은 위치 설명용 부분 예제이며 기존 생성 파일을 덮어쓰거나 빌드하는 용도가 아닙니다. 재생성 전 **Keep User Code when re-generating**을 켭니다.
 
 ## 회로와 센싱 기준
 
@@ -77,7 +79,7 @@ ACS71240-010B3의 기본 FAULT 기준은 ±10A이므로 이 1A 컨버터의 빠�
 
 ## 검증 범위
 
-공식 STM32F3 HAL·CMSIS 헤더를 이용한 GCC 문법 검사(`-Wall -Wextra -Werror`)를 통과했습니다. **이 업로드 모듈의 ARM 대상 빌드·링크와 실제 보드 시험은 수행하지 않았습니다.**
+공식 STM32F3 HAL·CMSIS 헤더를 이용한 GCC 문법 검사(`-Wall -Wextra -Werror`)를 통과했습니다. 사용자의 실제 `.ioc`가 없어 CubeMX 재생성 보존 시험은 수행하지 않았습니다. **ARM 대상 빌드·링크와 실제 보드 시험도 수행하지 않았습니다.**
 
 ## 참고 자료
 
