@@ -6,19 +6,17 @@
  * 클럭/핀/ADC/PWM의 MX_*_Init() 설정은 CubeMX에서 생성합니다. */
 #include "stm32f3xx_hal.h"
 #include "buck_app.h"
+#include "buck_board.h"
 #include <math.h>
 #include <string.h>
 
-/* [직접 확인/수정] 배선, ADC 환산, 게이트 파형을 확인한 뒤 1로 변경합니다.
- * 기본 0에서는 영점 보정과 디버거 관찰만 가능하며 전력단은 기동하지 않습니다.
- * PC6는 외부 풀다운이 있는 전용 DRV_EN이어야 합니다. ACS71240의
- * open-drain FAULT와 공유된 선을 push-pull HIGH로 강제 구동하지 마세요. */
-#define BUCK_BOARD_VERIFIED 0u
-#define VDDA 3.300f
-#define CURRENT_POLARITY 1.0f /* IP+ -> IP-의 실제 전류 방향을 확인합니다. */
-#define PERIOD 1280u          /* TIM1 = HCLK = 64MHz일 때 명목 50kHz */
-#define TRIGGER 320u          /* 주기 시작 5us 후 OC4REF 상승 -> ADC 시작 */
-#define MARGIN 64u            /* 다음 PWM update의 1us 전까지 계산 완료 */
+/* 보드 의존 값은 buck_board.h에서 관리합니다.
+ * 현재 ex1.ioc의 ADC/TIM은 미완성이라 Buck_Init()의 설정 검사에서 정지합니다. */
+#define VDDA BUCK_ADC_VDDA_V
+#define CURRENT_POLARITY BUCK_CURRENT_POLARITY
+#define PERIOD BUCK_PERIOD_TICKS
+#define TRIGGER BUCK_TRIGGER_TICKS
+#define MARGIN BUCK_MARGIN_TICKS
 /* CubeMX가 정의한 핸들을 참조합니다. 여기에서 다시 정의하지 않습니다.
  * 초기화 함수가 main.c에 있거나 adc.c/tim.c로 나뉘어 있어도 동일합니다. */
 extern ADC_HandleTypeDef hadc1;
@@ -39,6 +37,7 @@ static volatile uint16_t adc_frame[6];
 static struct {
     uint32_t state, faults, count, phase, boot, checked;
     uint32_t zero_sum, zero_n, calibrated, previous, previous_valid, expect;
+    uint32_t sampling_started;
     uint16_t zero_min, zero_max;
     float zero, ref, integ, prop, aw, cap, duty;
 } b;
@@ -51,8 +50,8 @@ void Buck_EmergencyOff(void)
     /* Error_Handler는 주변장치 초기화 전에도 호출될 수 있습니다.
      * 아직 클럭이 꺼져 있는 주변장치에는 접근하지 않습니다.
      * 리셋/초기화 전 OFF 상태는 PC6의 외부 EN 풀다운이 보장해야 합니다. */
-    if (__HAL_RCC_GPIOC_IS_CLK_ENABLED()) {
-        GPIOC->BSRR = (uint32_t)GPIO_PIN_6 << 16u;
+    if (BUCK_EN_CLOCK_ENABLED()) {
+        BUCK_EN_GPIO->BSRR = (uint32_t)BUCK_EN_PIN << 16u;
     }
     if (__HAL_RCC_TIM1_IS_CLK_ENABLED()) {
         TIM1->BDTR &= ~TIM_BDTR_MOE;
@@ -140,7 +139,7 @@ static void frame(uint32_t half)
         else {
             if (b.boot<=50u) {
                 TIM1->BDTR |= TIM_BDTR_MOE;
-                GPIOC->BSRR=GPIO_PIN_6; /* CCR1=0: 저측만 켜서 bootstrap 충전 */
+                BUCK_EN_GPIO->BSRR=BUCK_EN_PIN; /* 저측만 켜서 bootstrap 충전 */
             }
             if (--b.boot==0u) b.state=SOFTSTART;
         }
@@ -211,7 +210,28 @@ void Buck_Init(void)
     buck_arm_request=0u;
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT=0u; DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-    if (HAL_RCC_GetHCLKFreq()!=64000000u || htim1.Instance!=TIM1 ||
+    /* .ioc가 아직 미완성인 상태에서도 NULL DMA 핸들로 HAL을 호출하지 않습니다.
+     * ADC/TIM을 임의 설정하지 않고, F_SETUP(512)으로 대기합니다. */
+    if (HAL_RCC_GetHCLKFreq()!=BUCK_CORE_CLOCK_HZ || htim1.Instance!=TIM1 ||
+        hadc1.Instance!=ADC1 || hadc1.DMA_Handle==NULL ||
+        hadc1.Init.NbrOfConversion!=3u ||
+        hadc1.Init.Resolution!=ADC_RESOLUTION_12B ||
+        hadc1.Init.DataAlign!=ADC_DATAALIGN_RIGHT ||
+        hadc1.Init.ScanConvMode!=ADC_SCAN_ENABLE ||
+        hadc1.Init.ContinuousConvMode!=DISABLE ||
+        hadc1.Init.DiscontinuousConvMode!=DISABLE ||
+        hadc1.Init.DMAContinuousRequests!=ENABLE ||
+        hadc1.Init.ExternalTrigConv!=ADC_EXTERNALTRIGCONV_T1_TRGO ||
+        hadc1.Init.ExternalTrigConvEdge!=ADC_EXTERNALTRIGCONVEDGE_RISING) {
+        trip(F_SETUP); return;
+    }
+    if (hadc1.DMA_Handle->Instance!=DMA1_Channel1 ||
+        hadc1.DMA_Handle->Init.Mode!=DMA_CIRCULAR ||
+        hadc1.DMA_Handle->Init.Direction!=DMA_PERIPH_TO_MEMORY ||
+        hadc1.DMA_Handle->Init.PeriphInc!=DMA_PINC_DISABLE ||
+        hadc1.DMA_Handle->Init.MemInc!=DMA_MINC_ENABLE ||
+        hadc1.DMA_Handle->Init.PeriphDataAlignment!=DMA_PDATAALIGN_HALFWORD ||
+        hadc1.DMA_Handle->Init.MemDataAlignment!=DMA_MDATAALIGN_HALFWORD ||
         hadc1.Instance!=ADC1 || TIM1->PSC!=0u || TIM1->ARR!=PERIOD-1u ||
         TIM1->CCR4!=TRIGGER || !(TIM1->CCMR1 & TIM_CCMR1_OC1PE) ||
         (TIM1->CCMR1 & TIM_CCMR1_OC1M)!=TIM_OCMODE_PWM1 ||
@@ -220,8 +240,8 @@ void Buck_Init(void)
         (TIM1->CCER & (TIM_CCER_CC1P | TIM_CCER_CC1NP))!=0u ||
         (TIM1->CR2 & (TIM_CR2_OIS1 | TIM_CR2_OIS1N))!=0u ||
         (TIM1->CR2 & TIM_CR2_MMS)!=TIM_TRGO_OC4REF ||
-        (TIM1->CR1 & TIM_CR1_CKD)!=0u ||
-        (TIM1->BDTR & TIM_BDTR_DTG)!=19u ||
+        (TIM1->CR1 & (TIM_CR1_CKD | TIM_CR1_CMS | TIM_CR1_DIR))!=0u ||
+        (TIM1->BDTR & TIM_BDTR_DTG)!=BUCK_DEADTIME_TICKS ||
         !(TIM1->BDTR & TIM_BDTR_OSSI) || (TIM1->BDTR & TIM_BDTR_AOE)) {
         trip(F_SETUP); return;
     }
@@ -235,12 +255,15 @@ void Buck_Init(void)
     TIM1->CCER |= TIM_CCER_CC1E | TIM_CCER_CC1NE;
     TIM1->EGR=TIM_EGR_UG; TIM1->SR=0u; TIM1->CNT=0u;
     Buck_EmergencyOff(); TIM1->CR1 |= TIM_CR1_CEN;
+    b.sampling_started=1u;
 }
 
 void Buck_Poll(void)
 {
     /* main.c의 USER CODE 3, while(1) 안에서 계속 호출합니다. */
     static uint32_t seen, fresh_ms;
+    /* 미완성 ADC/TIM으로 F_SETUP이 난 경우 갱신 정지 오류를 덧붙이지 않습니다. */
+    if (!b.sampling_started) return;
     uint32_t now=HAL_GetTick(), frames=buck_debug.frames;
     if (frames!=seen) { seen=frames; fresh_ms=now; }
     else if ((uint32_t)(now-fresh_ms)>1u) {

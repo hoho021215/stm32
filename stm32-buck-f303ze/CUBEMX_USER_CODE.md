@@ -1,15 +1,15 @@
 # CubeMX 생성 파일에서 직접 추가할 코드
 
-이 문서는 **CubeMX가 만든 원본 파일을 유지하면서 사용자 코드만 넣는 방법**입니다. 저장소의 `buck_app.c/.h`는 사용자가 별도로 추가하는 파일이며 CubeMX 자동 생성 파일이 아닙니다. `.ioc` 파일과 사용자의 실제 생성 프로젝트는 제공되지 않았으므로, 전체 생성 프로젝트나 실제 재생성 검증을 완료한 결과물은 포함하지 않습니다.
+이 문서는 **CubeMX가 만든 원본 파일을 유지하면서 사용자 코드만 넣는 방법**입니다. 저장소의 `buck_app.c/.h`는 사용자가 별도로 추가하는 파일이며 CubeMX 자동 생성 파일이 아닙니다. 업로드한 [ex1.ioc](ex1.ioc)를 기준으로 작업합니다. 실제 생성 프로젝트 전체와 CubeMX 재생성 검증 결과는 포함하지 않습니다. 현재 ADC·TIM 설정이 제어 모듈의 임시 목표와 다르므로 [IOC_REVIEW.md](IOC_REVIEW.md)를 먼저 확인합니다.
 
 전체 배치 참고는 [`integration/main.c.example`](integration/main.c.example), [`integration/stm32f3xx_it.c.example`](integration/stm32f3xx_it.c.example)에 있습니다. 두 `.example`은 초기화 함수 전체를 생략한 **위치 설명용 파일**입니다. 원본 생성 파일에 통째로 덮어쓰거나 빌드하지 마세요.
 
 ## 1. Generate Code 전에 설정
 
-1. [CUBEMX_SETUP.md](CUBEMX_SETUP.md)의 핀·클럭·주변장치를 `.ioc`에서 설정합니다.
+1. 업로드한 `ex1.ioc`의 기본 구조를 유지합니다. ADC·TIM은 추후 제공할 설정을 기다리며, [CUBEMX_SETUP.md](CUBEMX_SETUP.md)의 임시 목표를 현재 파일에 자동 적용한 것으로 해석하지 않습니다.
 2. Project Manager → Project에서 Toolchain/IDE를 **STM32CubeIDE**로 선택합니다.
 3. Project Manager → Code Generator → **Keep User Code when re-generating**을 켭니다. 필요하면 백업 옵션도 켭니다.
-4. `.ioc`를 저장하고 Generate Code를 실행합니다. 설정을 바꿀 때도 `.ioc`를 수정해서 재생성합니다.
+4. 작업할 `.ioc`를 저장하고 Generate Code를 실행합니다. 현재 파일의 CubeMX 6.18.1/F3 FW 1.11.6과 설치 버전이 다르면 마이그레이션 내용을 확인합니다. ADC·TIM 완료 전에는 제어 구동을 시험하지 않습니다.
 
 `USER CODE BEGIN ...` / `USER CODE END ...`는 CubeMX가 이미 만든 이름과 위치를 그대로 사용합니다. `#include your code1` 같은 문법이 아니라, 보통 `/* USER CODE BEGIN Includes */` 안에 `#include`를 넣습니다. 구역 이름을 임의로 바꾸거나 기존 표식을 삭제하지 마세요.
 
@@ -19,6 +19,7 @@
 |---|---|---|
 | `Core/Src/buck_app.c` | `Core/Src/buck_app.c` | 사용자가 직접 추가 |
 | `Core/Inc/buck_app.h` | `Core/Inc/buck_app.h` | 사용자가 직접 추가 |
+| `Core/Inc/buck_board.h` | `Core/Inc/buck_board.h` | 사용자가 직접 추가하는 기준값/배선 설정 |
 | `main.c`, `main.h` | 기존 파일 유지 | CubeMX |
 | `stm32f3xx_it.c`, HAL MSP, 주변장치 초기화 | 기존 파일 유지 | CubeMX |
 
@@ -34,11 +35,12 @@ CubeMX의 **Generate peripheral initialization as a pair of '.c/.h' files per pe
 /* USER CODE END Includes */
 ```
 
-모든 생성된 `MX_GPIO_Init`, `MX_DMA_Init`, `MX_ADC1_Init`, `MX_TIM1_Init` 호출이 끝난 다음 구역에 넣습니다. 생성된 초기화 호출 자체는 기존 파일에 한 번만 남깁니다.
+최종 ADC·TIM·DMA 설정이 갖춰진 뒤, 생성된 `MX_GPIO_Init`, `MX_DMA_Init`, `MX_ADC1_Init`, `MX_TIM1_Init` 호출이 끝난 다음 구역에 넣습니다. 현재 ex1.ioc에는 DMA 설정이 없고 저장된 초기화 목록에도 ADC 호출이 없으므로 예제의 호출들을 지금 main.c에 임의로 복사하지 않습니다. 실제 Generate Code 결과를 확인하며 기존 생성 호출 자체는 한 번만 남깁니다. 현재 `Buck_Init()`는 미완성 설정을 검사하여 F_SETUP(512)로 중단할 수 있습니다.
 
 ```c
 /* USER CODE BEGIN 2 */
-/* [직접 추가] 주변장치 초기화 후 한 번만 실행 */
+/* [직접 추가] 주변장치 초기화 후 한 번만 실행
+ * 현재 ex1.ioc는 ADC/TIM/DMA 설정 미완성으로 설정 오류가 날 수 있음 */
 Buck_Init();
 /* USER CODE END 2 */
 ```
@@ -103,7 +105,7 @@ MemoryManagement, BusFault, UsageFault 핸들러를 사용한다면 해당 함�
 - `buck_app.c`가 `Core/Src` 아래에 있고 활성 빌드 설정에서 **Exclude from Build** 상태가 아닌지 확인합니다. 반대로 `integration/*.example`은 설명용이므로 소스로 추가하지 않습니다.
 - 컴파일러 include path에 프로젝트의 `Core/Inc`가 포함되어야 합니다. CubeMX 기본 프로젝트에는 보통 이미 있습니다.
 - `buck_app.c`를 두 폴더에 복사하거나 `.c` 파일 자체를 `#include`하지 않습니다. `#include "buck_app.h"`만 사용합니다.
-- `hadc1`, `htim1`, `hdma_adc1`은 CubeMX가 정의한 것을 사용합니다. 생성된 DMA/ADC IRQ의 `HAL_DMA_IRQHandler`·`HAL_ADC_IRQHandler`와 SysTick의 `HAL_IncTick`을 유지합니다.
+- `hadc1`, `htim1`과 추후 DMA 설정 시 생성될 `hdma_adc1`은 CubeMX가 정의한 것을 사용합니다. 생성된 DMA/ADC IRQ의 `HAL_DMA_IRQHandler`·`HAL_ADC_IRQHandler`와 SysTick의 `HAL_IncTick`을 유지합니다.
 - 최적화 `-O2`, Cortex-M4F/FPU 및 라이브러리와 맞는 hard-float ABI를 사용하고 `-ffast-math`는 쓰지 않습니다.
 - Generate Code 이후 추가한 사용자 구역과 사용자 파일이 남아 있는지 diff로 확인한 뒤 Clean/Build 합니다. `.ioc`의 주변장치·핀·옵션을 바꾸면 연동 코드도 다시 확인합니다.
 
@@ -114,4 +116,4 @@ MemoryManagement, BusFault, UsageFault 핸들러를 사용한다면 해당 함�
 - [ST UM1718: STM32CubeMX 사용자 설명서](https://www.st.com/resource/en/user_manual/um1718-stm32cubemx-for-stm32-configuration-and-initialization-c-code-generation-stmicroelectronics.pdf): 사용자 구역과 재생성 보존 설정.
 - [ST AN4989: Debug toolbox](https://www.st.com/resource/en/application_note/an4989-introduction-to-debug-toolbox-for-stm32-mcus-stmicroelectronics.pdf): HardFault 사용자 구역.
 - [ST 공식 CubeMX 형식 예제](https://github.com/STMicroelectronics/STM32CubeG4/blob/master/Projects/STM32G474E-EVAL/Examples/OPAMP/OPAMP_PGA/Src/main.c): `Includes`, `2`, `3`, `4`, `Error_Handler_Debug` 배치. 제품별 초기화 값이 아니라 구역 형식만 참고합니다.
-- [ST F303ZE 템플릿](https://github.com/STMicroelectronics/STM32CubeF3/blob/master/Projects/STM32F303ZE-Nucleo/Templates/Src/main.c): 해당 MCU의 HSI/PREDIV2×16 64MHz 설정.
+- [ST F303ZE 템플릿](https://github.com/STMicroelectronics/STM32CubeF3/blob/master/Projects/STM32F303ZE-Nucleo/Templates/Src/main.c): 해당 MCU의 기본 프로젝트 형식 참고. 현재 업로드 기준의 HSE 72MHz를 이 예제의 HSI 64MHz로 바꾸지 않습니다.

@@ -20,7 +20,8 @@ void Buck_Poll(void);
 void Buck_EmergencyOff(void);
 
 /* 디버거 명령: 1=시작, 2=정지, 3=고장 해제(자동 재시작하지 않음).
- * 시작 조건: BUCK_BOARD_VERIFIED=1, 영점 보정 완료, 유효한 센서 값. */
+ * 시작 조건: buck_board.h의 BUCK_BOARD_VERIFIED=1, 영점 보정 완료,
+ * 유효한 센서 값과 ADC/TIM/DMA 설정. 현재 ex1.ioc는 설정 보완 대기 상태입니다. */
 extern volatile uint32_t buck_arm_request;
 
 #ifdef __cplusplus

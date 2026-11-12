@@ -2,29 +2,32 @@
 
 NUCLEO-F303ZE와 UCC27714를 사용하는 **입력 30V → 출력 15V·1A, 스위칭 50kHz** 벅 컨버터용 STM32CubeF3 HAL 모듈입니다. CubeMX가 생성한 프로젝트에 추가해서 사용합니다. 완성된 CubeIDE 프로젝트나 플래시용 바이너리는 포함하지 않습니다.
 
-## 먼저 적용할 순서
+## 먼저 확인할 파일과 현재 단계
 
-1. [CUBEMX_SETUP.md](CUBEMX_SETUP.md)에 따라 `.ioc`에서 핀·클럭·ADC·PWM을 설정하고 Generate Code를 실행합니다.
-2. [`Core/Src/buck_app.c`](Core/Src/buck_app.c), [`Core/Inc/buck_app.h`](Core/Inc/buck_app.h)를 같은 프로젝트 경로에 직접 추가합니다.
-3. **[CUBEMX_USER_CODE.md](CUBEMX_USER_CODE.md)**를 따라 생성된 `main.c`와 `stm32f3xx_it.c`의 기존 `USER CODE BEGIN/END` 구역 안에 호출만 넣습니다.
+1. 업로드한 **[`ex1.ioc`](ex1.ioc)**를 원본 설정 그대로 보존했습니다. **[IOC_REVIEW.md](IOC_REVIEW.md)**에 실제 설정과 문제·미완성 항목을 정리했습니다.
+2. 현재는 원본의 **72MHz 클럭, PC0/PA7 PWM 핀과 CubeIDE 구조**를 기준으로 통합을 준비합니다. ADC·TIM 설정은 사용자가 다음에 올릴 파일을 기다리며 이번 `.ioc`에서는 변경하지 않았습니다.
+3. **[CUBEMX_USER_CODE.md](CUBEMX_USER_CODE.md)**에서 생성된 `main.c`와 `stm32f3xx_it.c`의 기존 `USER CODE` 삽입 위치를 확인합니다. [CUBEMX_SETUP.md](CUBEMX_SETUP.md)의 50kHz·3채널 ADC 값은 **추후 적용할 임시 목표**입니다.
+4. 사용자 파일은 [`Core/Src/buck_app.c`](Core/Src/buck_app.c), [`Core/Inc/buck_app.h`](Core/Inc/buck_app.h), [`Core/Inc/buck_board.h`](Core/Inc/buck_board.h)입니다. 같은 프로젝트 경로에 추가하며 생성 파일을 대체하지 않습니다.
 
-직접 넣을 위치는 `Includes`의 헤더, `2`의 `Buck_Init()`, `3`의 `Buck_Poll()`, 오류·HardFault 구역의 비상 차단입니다. 필요한 사용자 추가 부분은 한글 주석으로 표시했습니다. 생성된 초기화 함수와 HAL IRQ 호출은 유지합니다. ADC 콜백은 `buck_app.c`에 있으므로 `main.c`에 중복 구현하지 않습니다.
+**현재 `ex1.ioc`만으로 제어 모듈이 바로 구동되지는 않습니다.** 설정 검사에서 F_SETUP(512)로 중단할 수 있으며 `BUCK_BOARD_VERIFIED=0`을 유지합니다. ADC·TIM·DMA·EN 설정이 완료된 뒤 실제 설정에 맞춰 갱신해야 합니다.
 
-전체 배치 참고는 [`integration/main.c.example`](integration/main.c.example), [`integration/stm32f3xx_it.c.example`](integration/stm32f3xx_it.c.example)에 있습니다. 이 파일들은 위치 설명용 부분 예제이며 기존 생성 파일을 덮어쓰거나 빌드하는 용도가 아닙니다. 재생성 전 **Keep User Code when re-generating**을 켭니다.
+직접 넣을 위치는 `Includes`의 헤더, `2`의 `Buck_Init()`, `3`의 `Buck_Poll()`, 오류·HardFault 구역의 비상 차단입니다. 한글 주석으로 사용자 추가 부분을 표시했습니다. ADC 콜백은 `buck_app.c`에 있어 `main.c`에 중복 구현하지 않습니다.
+
+[`integration/main.c.example`](integration/main.c.example), [`integration/stm32f3xx_it.c.example`](integration/stm32f3xx_it.c.example)은 완성된 생성 프로젝트가 아닌 **위치 설명용 부분 예제**입니다. 현재 `.ioc`에 아직 없는 DMA/다채널 ADC를 생성했다고 해석하면 안 됩니다. 재생성 전 **Keep User Code when re-generating**을 확인합니다.
 
 ## 회로와 센싱 기준
 
 | 항목 | 기준 |
 |---|---|
 | MCU | STM32F303ZETx / NUCLEO-F303ZE |
-| 클럭 | HSI 8MHz / PREDIV 2 × PLL 16 = HCLK·TIM1 64MHz |
+| 기준 클럭 | 업로드한 ex1.ioc의 HSE 8MHz·PLL ×9, HCLK·TIM1 72MHz |
 | 드라이버 | UCC27714, 전용 EN 제어 |
 | 전류센서 | ACS71240LLCBTR-010B3, 인덕터 전류 측정 |
 | 센서 환산 | 3.3V 전원, 명목 영점 1.65V, 감도 0.132V/A |
 | 전압 검출 | 상단 27kΩ·하단 1.5kΩ, 분압비 19 |
 | MCP6002 | 입력·출력 전압 검출용 단위 이득 버퍼 |
 
-전압은 `V = ADC × VDDA / 4095 × 19`, 전류는 `IL = (ADC × VDDA / 4095 − 보정 영점) / 0.132`로 환산합니다. `VDDA`와 `CURRENT_POLARITY`는 실측에 맞춰 확인해야 합니다.
+전압은 `V = ADC × VDDA / 4095 × 19`, 전류는 `IL = (ADC × VDDA / 4095 − 보정 영점) / 0.132`로 환산합니다. `buck_board.h`의 `BUCK_ADC_VDDA_V`와 `BUCK_CURRENT_POLARITY`는 실측에 맞춰 확인해야 합니다.
 
 ## 포함 기능
 
@@ -40,7 +43,7 @@ NUCLEO-F303ZE와 UCC27714를 사용하는 **입력 30V → 출력 15V·1A, 스�
 
 ## 기동과 디버깅
 
-기본값 `BUCK_BOARD_VERIFIED=0`에서는 ADC·텔레메트리만 동작하고 기동하지 않습니다. 실제 배선, 센싱, 게이트 파형, 데드타임과 보호를 검증한 뒤 1로 바꿉니다. 실패한 시작 요청은 폐기되며 나중에 자동으로 기동하지 않습니다.
+`buck_board.h`의 기본값 `BUCK_BOARD_VERIFIED=0`은 전력단 기동을 막습니다. 주변장치 설정 검사가 통과한 상태에서만 ADC 영점 보정·텔레메트리가 동작합니다. 현재 ex1.ioc의 미완성 ADC·TIM 구성에서는 먼저 설정 오류로 중단할 수 있습니다. 실제 설정·배선·센싱·게이트 파형·보호를 검증한 뒤에만 1로 바꿉니다. 실패한 시작 요청은 폐기되며 나중에 자동으로 기동하지 않습니다.
 
 디버거의 `buck_arm_request`에 다음 값을 씁니다.
 
@@ -69,17 +72,17 @@ NUCLEO-F303ZE와 UCC27714를 사용하는 **입력 30V → 출력 15V·1A, 스�
 
 ## 조정이 필요한 값과 보호 한계
 
-전압 이득 `Kp=0.005`, `Ki=0.25`, anti-windup 계수 `50/s`, 최대 듀티 `0.75`, 전류 제한 `1.15A`/복귀 `1.05A`, 차단 `1.8A`/역방향 `−0.4A`, OVP `17V`, 입력 범위 `23~36V`, 데드타임 약 `297ns`는 **조정용 초깃값**입니다. L1 인덕턴스, 출력 총 커패시턴스·ESR, MOSFET 품번, 부하와 센서 지연을 확인하지 않은 상태에서 안정성이나 최대 전류를 보장하지 않습니다.
+전압 이득 `Kp=0.005`, `Ki=0.25`, anti-windup 계수 `50/s`, 최대 듀티 `0.75`, 전류 제한 `1.15A`/복귀 `1.05A`, 차단 `1.8A`/역방향 `−0.4A`, OVP `17V`, 입력 범위 `23~36V`, 데드타임 DTG=22, 약 `305.6ns`는 **조정용 초깃값**입니다. L1 인덕턴스, 출력 총 커패시턴스·ESR, MOSFET 품번, 부하와 센서 지연을 확인하지 않은 상태에서 안정성이나 최대 전류를 보장하지 않습니다.
 
 UCC27714에는 상·하단 동시 켜짐 방지 기능이 없으므로 TIM1 CH1/CH1N의 하드웨어 데드타임이 필요합니다. 드라이버 전원은 데이터시트의 10~17V 범위로 공급하며 30V를 직접 연결하지 않습니다. 정지는 EN LOW와 MOE 해제를 함께 사용합니다. 듀티 0만 쓰면 상보 저측 MOSFET이 계속 켜질 수 있습니다.
 
-PC6는 외부 약 10kΩ 풀다운을 둔 **전용 DRV_EN**이어야 합니다. PCB의 `GPIO_1`이 ACS71240의 open-drain FAULT와 드라이버 EN을 공유한다면 그대로 push-pull HIGH로 구동하지 말고, 신호 분리 또는 적절한 enable 논리를 먼저 구성해야 합니다.
+PC6는 아직 ex1.ioc에 없는 **전용 DRV_EN 제안**입니다. 채택할 경우 외부 약 10kΩ 풀다운을 둡니다. PCB의 `GPIO_1`이 ACS71240의 open-drain FAULT와 드라이버 EN을 공유한다면 그대로 push-pull HIGH로 구동하지 말고, 신호 분리 또는 적절한 enable 논리를 먼저 구성해야 합니다.
 
 ACS71240-010B3의 기본 FAULT 기준은 ±10A이므로 이 1A 컨버터의 빠른 단락 보호로 사용할 수 없습니다. 별도 비교기→TIM1 BKIN 등 독립 보호 경로를 검토해야 합니다. ADC 표본 기반 보호는 센서 단선이나 모든 이상 상태를 판별하지 못합니다. 영점 보정 중 외부에서 흐르는 전류가 없어야 합니다.
 
 ## 검증 범위
 
-공식 STM32F3 HAL·CMSIS 헤더를 이용한 GCC 문법 검사(`-Wall -Wextra -Werror`)를 통과했습니다. 사용자의 실제 `.ioc`가 없어 CubeMX 재생성 보존 시험은 수행하지 않았습니다. **ARM 대상 빌드·링크와 실제 보드 시험도 수행하지 않았습니다.**
+공식 STM32F3 HAL·CMSIS 헤더를 이용한 GCC 문법 검사(`-Wall -Wextra -Werror`)를 통과했습니다. 업로드한 ex1.ioc의 텍스트를 검토했으며 CubeMX 실제 Generate Code·재생성 보존 시험은 수행하지 않았습니다. **ARM 대상 빌드·링크와 실제 보드 시험도 수행하지 않았습니다.**
 
 ## 참고 자료
 
